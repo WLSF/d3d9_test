@@ -4,7 +4,8 @@
 #include "framework.h"
 #include "d3d9_test.h"
 #include <d3d9.h>
-#include <d3dx9math.h>
+#include <d3dx9.h>
+#include <commdlg.h>
 
 #pragma comment(lib, "d3d9.lib")
 
@@ -16,6 +17,7 @@
 HINSTANCE hInst;                                // instância atual
 WCHAR szTitle[MAX_LOADSTRING];                  // O texto da barra de título
 WCHAR szWindowClass[MAX_LOADSTRING];            // o nome da classe da janela principal
+WCHAR g_pFilePath[MAX_PATH];
 
 // Declarações de encaminhamento de funções incluídas nesse módulo de código:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -26,6 +28,36 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 // DirectX9 instances
 LPDIRECT3D9 g_pD3d;
 LPDIRECT3DDEVICE9 g_pD3dDev;
+
+LPD3DXMESH g_pMesh;
+D3DMATERIAL9* g_pMaterial;
+DWORD g_nbMaterials;
+
+// functions definition
+void InitApp(HWND hWnd);
+void render_frame(void);
+void CleanDirectX(void);
+void setup_graphics(void);
+void setup_light(void);
+
+void OpenFileDialog(HWND hwndOwner) {
+    char filePath[MAX_PATH] = { 0 };
+    OPENFILENAME ofn = { 0 }; // common dialog box structure
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwndOwner;
+    ofn.lpstrFile = (LPWSTR)g_pFilePath;
+    ofn.nMaxFile = sizeof(g_pFilePath);
+    ofn.lpstrFilter = L"DirectX\0*x\0All Files\0*.*\0Text Files\0*.TXT\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrFileTitle = NULL;
+    ofn.nMaxFileTitle = 0;
+    ofn.lpstrInitialDir = NULL;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    GetOpenFileName(&ofn);
+
+    return;
+}
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -43,7 +75,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     MyRegisterClass(hInstance);
 
     // Realize a inicialização do aplicativo:
-    if (!InitInstance (hInstance, nCmdShow))
+    if (!InitInstance(hInstance, nCmdShow))
     {
         return FALSE;
     }
@@ -61,6 +93,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
             DispatchMessage(&msg);
         }
     }
+
+    CleanDirectX();
 
     return (int) msg.wParam;
 }
@@ -103,86 +137,38 @@ struct CUSTOM_VERTEX
 
 void render_frame(void)
 {
-    g_pD3dDev->SetRenderState(D3DRS_LIGHTING, FALSE);
-    g_pD3dDev->SetRenderState(D3DRS_ZENABLE, TRUE);
     g_pD3dDev->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
     g_pD3dDev->Clear(0, NULL, D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
+
     g_pD3dDev->BeginScene();
 
-    CUSTOM_VERTEX vv[] = {
-        { -3.0f, 3.0f, -3.0f, D3DCOLOR_XRGB(0, 0, 255), },
-        { 3.0f, 3.0f, -3.0f, D3DCOLOR_XRGB(0, 255, 0), },
-        { -3.0f, -3.0f, -3.0f, D3DCOLOR_XRGB(255, 0, 0), },
-        { 3.0f, -3.0f, -3.0f, D3DCOLOR_XRGB(0, 255, 255), },
-        { -3.0f, 3.0f, 3.0f, D3DCOLOR_XRGB(0, 0, 255), },
-        { 3.0f, 3.0f, 3.0f, D3DCOLOR_XRGB(255, 0, 0), },
-        { -3.0f, -3.0f, 3.0f, D3DCOLOR_XRGB(0, 255, 0), },
-        { 3.0f, -3.0f, 3.0f, D3DCOLOR_XRGB(0, 255, 255), },
-    };
-
-    short indices[] =
-    {
-        0, 1, 2,    // side 1
-        2, 1, 3,
-        4, 0, 6,    // side 2
-        6, 0, 2,
-        7, 5, 6,    // side 3
-        6, 5, 4,
-        3, 1, 7,    // side 4
-        7, 1, 5,
-        4, 5, 0,    // side 5
-        0, 5, 1,
-        3, 7, 2,    // side 6
-        2, 7, 6,
-    };
-
-    LPDIRECT3DVERTEXBUFFER9 v_buffer;
-    LPDIRECT3DINDEXBUFFER9 i_buffer;
-
-    g_pD3dDev->CreateVertexBuffer(8*sizeof(CUSTOM_VERTEX), 0, CUSTOMFVF, D3DPOOL_MANAGED, &v_buffer, NULL);
-
-    void* pVoid;
-
-    v_buffer->Lock(0, 0, (void**)&pVoid, 0);
-    memcpy(pVoid, vv, sizeof(vv));
-    v_buffer->Unlock();
-
-    g_pD3dDev->CreateIndexBuffer(36 * sizeof(indices), 0, D3DFMT_INDEX16, D3DPOOL_MANAGED, &i_buffer, NULL);
-
-    i_buffer->Lock(0, 0, (void**)&pVoid, 0);
-    memcpy(pVoid, indices, sizeof(indices));
-    i_buffer->Unlock();
-
-    g_pD3dDev->SetFVF(CUSTOMFVF);
-
-    D3DXMATRIX matRotateY;
-    float idx = 0.5f;
-
-    D3DXMatrixRotationY(&matRotateY, idx);
-    g_pD3dDev->SetTransform(D3DTS_WORLD, &matRotateY);
-
     D3DXMATRIX matView;
+    D3DXVECTOR3 camera_pos = { 0.0f,4.0f,8.0f };
+    D3DXVECTOR3 look_at = { 0.0f,0.0f,0.0f };
+    D3DXVECTOR3 up_dir = { 0.0f, 1.0f, 0.0f };
 
-    D3DXVECTOR3 camera_pos = { 0.0f, 0.0f, 10.0f };
-    D3DXVECTOR3 look_at = { 0.0f, 0.0f, 0.0f };
-    D3DXVECTOR3 up = { 0.0f, 1.0f, 0.0f };
-
-    D3DXMatrixLookAtLH(&matView, &camera_pos, &look_at, &up);
+    D3DXMatrixLookAtLH(&matView, &camera_pos, &look_at, &up_dir);
     g_pD3dDev->SetTransform(D3DTS_VIEW, &matView);
 
     D3DXMATRIX matProjection;
-
-    D3DXMatrixPerspectiveFovLH(&matProjection, D3DXToRadian(45), (FLOAT)SCREEN_WIDTH / (FLOAT)SCREEN_HEIGHT, 1.0f, 100.0f);
+    D3DXMatrixPerspectiveFovLH(&matProjection, D3DXToRadian(45), SCREEN_WIDTH / SCREEN_HEIGHT, 1.0f, 100.0f);
     g_pD3dDev->SetTransform(D3DTS_PROJECTION, &matProjection);
-    
-    g_pD3dDev->SetStreamSource(0, v_buffer, 0, sizeof(CUSTOM_VERTEX));
-    g_pD3dDev->SetIndices(i_buffer);
-    g_pD3dDev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, 8, 0, 12);
+
+    static float index = 0.03f;
+    D3DXMATRIX matRotateY;
+    D3DXMatrixRotationY(&matRotateY, index);
+    g_pD3dDev->SetTransform(D3DTS_WORLD, &(matRotateY));
+
+    for (DWORD i = 0; i < g_nbMaterials; ++i)
+    {
+        g_pD3dDev->SetMaterial(&g_pMaterial[i]);
+        g_pMesh->DrawSubset(i);
+    }
 
     g_pD3dDev->EndScene();
     g_pD3dDev->Present(NULL, NULL, NULL, NULL);
 
-    v_buffer->Release();
+    return;
 }
 
 //
@@ -209,30 +195,82 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
    ShowWindow(hWnd, nCmdShow);
    UpdateWindow(hWnd);
-
-   g_pD3d = Direct3DCreate9(D3D_SDK_VERSION);
-
-   D3DPRESENT_PARAMETERS d3dpp;
-
-   ZeroMemory(&d3dpp, sizeof(d3dpp));
-   d3dpp.Windowed = TRUE;
-   d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-   d3dpp.hDeviceWindow = hWnd;
-   d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
-   d3dpp.BackBufferWidth = SCREEN_WIDTH;
-   d3dpp.BackBufferHeight = SCREEN_HEIGHT;
-   d3dpp.EnableAutoDepthStencil = TRUE;
-   d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-
-   if (D3D_OK == g_pD3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &g_pD3dDev))
-   {
-       render_frame();
-
-       g_pD3dDev->Release();
-       g_pD3d->Release();
-   }
+   InitApp(hWnd);
 
    return TRUE;
+}
+
+void InitApp(HWND hWnd)
+{
+    g_pD3d = Direct3DCreate9(D3D_SDK_VERSION);
+
+    D3DPRESENT_PARAMETERS d3dpp;
+
+    ZeroMemory(&d3dpp, sizeof(d3dpp));
+    d3dpp.Windowed = TRUE;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.hDeviceWindow = hWnd;
+    d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
+    d3dpp.BackBufferWidth = SCREEN_WIDTH;
+    d3dpp.BackBufferHeight = SCREEN_HEIGHT;
+    d3dpp.EnableAutoDepthStencil = TRUE;
+    d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
+
+    g_pD3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &d3dpp, &g_pD3dDev);
+
+    setup_light();
+
+    g_pD3dDev->SetRenderState(D3DRS_LIGHTING, TRUE);
+    g_pD3dDev->SetRenderState(D3DRS_ZENABLE, TRUE);
+    g_pD3dDev->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(50, 50, 50));
+
+    return;
+}
+
+void CleanDirectX(void)
+{
+    g_pMesh->Release();
+    g_pD3dDev->Release();
+    g_pD3d->Release();
+
+    return;
+}
+
+void load_mesh(void)
+{
+    LPD3DXBUFFER buffer;
+
+    HRESULT hr = D3DXLoadMeshFromX(g_pFilePath, D3DXMESH_SYSTEMMEM, g_pD3dDev, NULL, &buffer, NULL, &g_nbMaterials, &g_pMesh);
+    D3DXMATERIAL* tempMaterials = (D3DXMATERIAL*)buffer->GetBufferPointer();
+    
+    g_pMaterial = new D3DMATERIAL9[g_nbMaterials];
+
+    for (DWORD i = 0; i < g_nbMaterials; ++i)
+    {
+        g_pMaterial[i] = tempMaterials[i].MatD3D;
+        g_pMaterial[i].Ambient = g_pMaterial[i].Diffuse;
+    }
+    return;
+}
+
+void setup_light(void)
+{
+    D3DLIGHT9 light;
+
+    ZeroMemory(&light, sizeof(light));
+    light.Type = D3DLIGHT_DIRECTIONAL;
+    light.Diffuse.r = 0.5f;
+    light.Diffuse.g = 0.5f;
+    light.Diffuse.b = 0.5f;
+    light.Diffuse.a = 1.0f;
+
+    D3DVECTOR directionVec = { -1.0f,-0.3f,-1.0f };
+    light.Direction = directionVec;
+
+    g_pD3dDev->SetLight(0, &light);
+    g_pD3dDev->LightEnable(0, TRUE);
+
+    return;
 }
 
 //
@@ -255,6 +293,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             // Analise as seleções do menu:
             switch (wmId)
             {
+            case IDM_OPEN:
+                OpenFileDialog(hWnd);
+                load_mesh();
+                render_frame();
+                break;
             case IDM_ABOUT:
                 DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
                 break;
